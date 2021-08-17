@@ -22,7 +22,10 @@ from .request import (
     AtlasLatestRequest,
     AtlasResultsRequest
 )
-from .stream import AtlasStream
+from .stream import (
+    AtlasStream,
+    AsyncAtlasStream
+)
 from .api_listing import ProbeRequest, MeasurementRequest, AnchorRequest
 from .api_meta_data import Probe, Measurement
 from .measurement_tagging import MeasurementTagger
@@ -44,6 +47,7 @@ __all__ = [
     "AtlasSource",
     "AtlasChangeSource",
     "AtlasStream",
+    "AsyncAtlasStream",
     "ProbeRequest",
     "MeasurementRequest",
     "AnchorRequest",

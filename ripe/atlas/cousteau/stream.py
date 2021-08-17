@@ -16,7 +16,7 @@ import logging
 import hashlib
 from functools import partial
 
-from socketIO_client import SocketIO, BaseNamespace
+from socketio import Client, AsyncClient, ClientNamespace, AsyncClientNamespace
 
 from .version import __version__
 
@@ -34,8 +34,7 @@ except ImportError:  # Python 2.6
 LOG = logging.getLogger('atlas-stream')
 LOG.addHandler(NullHandler())
 
-
-class AtlasNamespace(BaseNamespace):
+class BaseNamespace():
     SUBSCRIPTIONS = {}
 
     def on_connect(self, *args):
@@ -47,9 +46,7 @@ class AtlasNamespace(BaseNamespace):
     def on_reconnect(self, *args):
         LOG.debug("Reconnected to RIPE Atlas Stream")
         LOG.debug("Trying to attach to existed subscriptions")
-        for subscription in self.SUBSCRIPTIONS.values():
-            LOG.debug("Subscribing to {}".format(subscription))
-            self.emit("atlas_subscribe", subscription)
+        self.resubscribe()
 
     def on_atlas_result(self, *args):
         LOG.info(args[0])
@@ -62,6 +59,23 @@ class AtlasNamespace(BaseNamespace):
 
     def on_atlas_error(self, *args):
         LOG.error("Got an error from stream server: {}".format(args[0]))
+
+    def resubscribe(self):
+        for subscription in self.SUBSCRIPTIONS.values():
+            LOG.debug("Subscribing to {}".format(subscription))
+            self.emit(AtlasStream.EVENT_NAME_SUBSCRIBE, subscription)
+
+    def emit(self, *args):
+        raise NotImplementedError('This class (BaseNamespace) cannot be used directly!')
+
+class AtlasNamespace(BaseNamespace, ClientNamespace): pass
+
+class AsyncAtlasNamespace(BaseNamespace, AsyncClientNamespace):
+    async def resubscribe(self):
+        for subscription in self.SUBSCRIPTIONS.values():
+            LOG.debug("Subscribing to {}".format(subscription))
+            await self.emit(AtlasStream.EVENT_NAME_SUBSCRIBE, subscription)
+
 
 
 class AtlasStream(object):
@@ -78,15 +92,16 @@ class AtlasStream(object):
     }
     # -------------------------------------------------------
 
-    def __init__(self, debug=False, server=False, proxies=None, headers=None):
+    def __init__(self, debug=False, server=False, session=None, headers=None):
         """Initialize stream"""
-        self.iosocket_server = "atlas-stream.ripe.net"
+        self.iosocket_server = "https://atlas-stream.ripe.net:443"
         self.iosocket_resource = "/stream/socket.io"
-        self.socketIO = None
+        self.socketIO = AsyncClient(logger = LOG)
         self.debug = debug
         self.error_callback = None
-        self.proxies = proxies or {}
         self.headers = headers or {}
+        self.session = session
+        self.namespace = AtlasNamespace()
 
         if not self.headers or not self.headers.get("User-Agent", None):
             user_agent = "RIPE ATLAS Cousteau v{0}".format(__version__)
@@ -103,22 +118,23 @@ class AtlasStream(object):
 
     def connect(self):
         """Initiate the channel we want to start streams from."""
-        self.socketIO = SocketIO(
-            host=self.iosocket_server,
-            port=80,
-            resource=self.iosocket_resource,
-            proxies=self.proxies,
-            headers=self.headers,
-            transports=["websocket"],
-            Namespace=AtlasNamespace,
-        )
+        options = {
+            "socketio_path": self.iosocket_resource,
+            "headers": self.headers,
+            "transports": ["websocket"],
+        }
+
+        if self.session is not None:
+            options["http_session"] = self.session
 
         self.socketIO.on(self.EVENT_NAME_ERROR, self.handle_error)
+        self.socketIO.register_namespace(self.namespace)
+
+        return self.socketIO.connect(self.iosocket_server, **options)
 
     def disconnect(self):
         """Exits the channel k shuts down connection."""
-        self.socketIO.disconnect()
-        self.socketIO.__exit__([])
+        return self.socketIO.disconnect()
 
     def unpack_results(self, callback, data):
         if isinstance(data, list):
@@ -151,7 +167,7 @@ class AtlasStream(object):
     def start_stream(self, stream_type, **stream_parameters):
         """Starts new stream for given type with given parameters"""
         if stream_type:
-            self.subscribe(stream_type, **stream_parameters)
+            return self.subscribe(stream_type, **stream_parameters)
         else:
             self.handle_error("You need to set a stream type")
 
@@ -162,7 +178,7 @@ class AtlasStream(object):
         if (stream_type == "result") and ("buffering" not in parameters):
             parameters["buffering"] = True
 
-        self.socketIO.emit(self.EVENT_NAME_SUBSCRIBE, parameters)
+        return self.socketIO.emit(self.EVENT_NAME_SUBSCRIBE, parameters)
 
     def timeout(self, seconds=None):
         """
@@ -170,6 +186,29 @@ class AtlasStream(object):
         None
         """
         if seconds is None:
-            self.socketIO.wait()
+            return self.socketIO.wait()
         else:
-            self.socketIO.wait(seconds=seconds)
+            raise NotImplementedError("Timeout handling is not implemented for 'wait'!")
+
+class AsyncAtlasStream(AtlasStream):
+    def __init__(self, debug=False, server=False, session=None, headers=None):
+        super().__init__(debug=False, server=False, session=None, headers=None)
+
+        self.socketIO = AsyncClient()
+        self.namespace = AsyncAtlasNamespace()
+
+    async def connect(self):
+        await super().connect()
+
+    async def disconnect(self):
+        """Exits the channel k shuts down connection."""
+        await super().disconnect()
+
+    async def start_stream(self, stream_type, **stream_parameters):
+        await super().start_stream(stream_type, **stream_parameters)
+
+    async def subscribe(self, stream_type, **parameters):
+        await super().subscribe(stream_type, **parameters)
+
+    async def timeout(self, seconds=None):
+        await super().timeout(seconds)
