@@ -7,8 +7,9 @@ __version__ = None
 exec(open('ripe/atlas/cousteau/version.py').read())
 
 install_requires = [
-    "python-dateutil", "python-socketio[asyncio_client]>=5.4.0",
-    "requests>=2.7.0", "websocket-client<0.99"
+    "python-dateutil",
+    "python-socketio[asyncio_client]<5",
+    "requests>=2.7.0",
 ]
 
 tests_require = [
