@@ -80,9 +80,20 @@ class AsyncAtlasNamespace(BaseNamespace, AsyncClientNamespace):
 
 class AtlasStream(object):
 
-    EVENT_NAME_RESULTS = "atlas_result"
+    # Events: https://atlas.ripe.net/docs/result-streaming/
+    # Evets that clients can emit
     EVENT_NAME_SUBSCRIBE = "atlas_subscribe"
+    EVENT_NAME_UNSUBSCRIBE = "atlas_unsubscribe"
+    # Events that clients can listen to
+    EVENT_NAME_CONNECT = "connect"
+    EVENT_NAME_DISCONNECT = "disconnect"
     EVENT_NAME_ERROR = "atlas_error"
+    EVENT_NAME_RESULTS = "atlas_result"
+    EVENT_NAME_METADATA = "atlas_metadata"
+    EVENT_NAME_PROBESTATUS = "atlas_probestatus"
+    EVENT_NAME_SUBSCRIBED = "atlas_subscribed"
+    EVENT_NAME_UNSUBSCRIBED = "atlas_unsubscribed"
+    EVENT_NAME_REPLAY_FINISHED = "atlas_replay_finished"
 
     # Remove the following list when deprecation time expires
     CHANNELS = {
